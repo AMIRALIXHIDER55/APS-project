@@ -10,46 +10,86 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 client = OpenAI(api_key="")
 
+
 @app.route('/')
 def home():
     return send_from_directory(BASE_DIR, 'frontend.html')
 
+
 def classify(message):
     prompt = f"""
-    پیام زیر را از نظر نوع دسته‌بندی کن. فقط یکی از این موارد را برگردان:
+    تو یک طبقه‌بند پیام هستی.
+    فقط و فقط یکی از این دسته‌ها را خروجی بده و هیچ متن دیگری تولید نکن:
+
     - پرسش عمومی
     - تشخیص بیماری
-    -پیدا کردن بیمارستان
-    -رزرو وقت
-    -پیدا کردن داروخانه و دارو
+    - پیدا کردن بیمارستان
+    - رزرو وقت
+    - پیدا کردن داروخانه و دارو
 
     پیام:
     {message}
 
-    فقط نوع پیام را برگردان.
+    خروجی فقط نام دسته باشد. هیچ توضیحی اضافه نده.
     """
 
     classification = client.responses.create(
-        model="gpt-5-nano", 
+        model="gpt-5-nano",
         input=prompt
     )
 
     return classification.output_text.strip()
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    user_message = request.json.get('message', '')
-    print(classify(user_message))
-    if not user_message:
-        return jsonify({'error': 'پیام خالی است'}), 400
+
+def generate_chat_response(user_message, category):
+
+    system_prompt = f"""
+    تو یک دستیار پزشکی هوشمند هستی.
+    پاسخ تو باید دقیقاً مطابق دسته تشخیص‌داده‌شده باشد.
+
+    دسته: {category}
+
+    قوانین پاسخ‌دهی:
+    - فقط درباره همین دسته پاسخ بده.
+    - از هرگونه توضیح اضافه، پیشنهاد اضافه، جمع‌بندی، یا جملاتی مثل 
+      «اگر خواستی»، «می‌خوای انجام بدم؟»، «آیا نیاز به کمک بیشتری داری» پرهیز کن.
+    - پاسخ باید کوتاه، دقیق، کاربردی و مستقیم باشد.
+    - لحن تخصصی و بدون حاشیه باشد.
+    - اگر سؤال نامشخص بود فقط بگو: «لطفاً دقیق‌تر توضیح بده.»
+    - از دادن توصیه‌های خطرناک پزشکی خودداری کن.
+    """
+
+    final_prompt = f"""
+    {system_prompt}
+
+    پیام کاربر:
+    {user_message}
+
+    پاسخ دقیق و مرتبط تولید کن.
+    """
 
     response = client.responses.create(
         model="gpt-5-nano",
-        input=user_message
+        input=final_prompt
     )
-    return jsonify({'reply': response.output_text.strip()})
+
+    return response.output_text.strip()
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    user_message = request.json.get('message', '')
+
+    if not user_message:
+        return jsonify({'error': 'پیام خالی است'}), 400
+
+    category = classify(user_message)
+    print("CATEGORY:", category)
+
+    reply = generate_chat_response(user_message, category)
+
+    return jsonify({'reply': reply})
 
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
-
