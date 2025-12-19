@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sick Survivor - Chatbot</title>
+<style>
+*{box-sizing:border-box;font-family:'Tahoma','Arial',sans-serif;}
+html,body{height:100%;margin:0;padding:0;background:#f0f2f5;direction:rtl;}
+body.night{background:#1e1e1e;}
+.wrap{min-height:100%;display:flex;justify-content:center;align-items:center;}
+.chat-container{width:400px;height:600px;background:#fff;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow:hidden;transition:background 0.3s ease;}
+body.night .chat-container{background:#2d2d2d;}
+.chat-header{background:#4a90e2;color:#fff;padding:14px;text-align:center;font-size:18px;position:relative;}
+body.night .chat-header{background:#232323;}
+.theme-toggle{position:absolute;left:15px;top:10px;cursor:pointer;font-size:22px;user-select:none;transition:transform 0.3s ease;}
+.theme-toggle:hover{transform:scale(1.15);}
+.chat-messages{flex:1;padding:12px;overflow:auto;background:#fafafa;display:flex;flex-direction:column;gap:8px;transition:background 0.3s ease;}
+body.night .chat-messages{background:#1a1a1a;}
+.message{max-width:80%;padding:10px 12px;border-radius:10px;word-break:break-word;white-space:pre-wrap;transition:background 0.3s ease,color 0.3s ease;}
+.user-message{align-self:flex-end;background:#dcf8c6;}
+body.night .user-message{background:#000;color:#fff;}
+.bot-message{align-self:flex-start;background:#e4e6eb;}
+body.night .bot-message{background:#3a3a3a;color:#ddd;}
+.chat-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e6e6e6;background:#fff;transition:background 0.3s ease;}
+body.night .chat-input{background:#2d2d2d;border-color:#444;}
+.chat-input textarea{flex:1;padding:10px 12px;border:1px solid #ccc;border-radius:6px;outline:none;resize:none;height:44px;font-size:14px;}
+body.night .chat-input textarea{background:#1d1d1d;color:#fff;border-color:#555;}
+.chat-input button{padding:10px 14px;border-radius:6px;border:none;background:#4a90e2;color:#fff;cursor:pointer;}
+body.night .chat-input button{background:#232323;}
+.chat-input button[disabled]{opacity:0.6;cursor:not-allowed;}
+.brand-logo{position:absolute;right:0;top:0;bottom:0;height:100%;max-height:100%;object-fit:contain;padding:0;margin:0;}
+body.night .brand-logo{height:100%;transform:scale(1.35);transform-origin:right center;}
+body:not(.night) .brand-logo{height:100%;transform:scale(1.55);transform-origin:right center;}
+#loadingOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(30,30,30,0.85);display:none;justify-content:center;align-items:center;z-index:9999;}
+.loader{display:flex;gap:8px;}
+.loader div{width:16px;height:16px;background:#4a90e2;border-radius:50%;animation:bounce 0.6s infinite alternate;}
+.loader div:nth-child(2){animation-delay:0.2s;}
+.loader div:nth-child(3){animation-delay:0.4s;}
+@keyframes bounce{from{transform:translateY(0);}to{transform:translateY(-16px);}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="chat-container">
+    <div class="chat-header">
+      Sick Survivor
+      <img id="brandLogo" class="brand-logo" src="https://i.ibb.co/j9gP71MH/day-logo.png" alt="Logo">
+      <div class="theme-toggle" id="themeToggle">🌙</div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages"></div>
+
+    <div class="chat-input">
+      <textarea id="userInput" placeholder="پیام خود را وارد کنید..."></textarea>
+      <button id="sendBtn">ارسال</button>
+      <button id="imageBtn">📷</button>
+      <input type="file" id="imageInput" accept="image/*" style="display:none"/>
+    </div>
+  </div>
+</div>
+
+<div id="loadingOverlay">
+  <div class="loader"><div></div><div></div><div></div></div>
+</div>
+
+<script>
+const chatMessages=document.getElementById("chatMessages");
+const userInput=document.getElementById("userInput");
+const sendBtn=document.getElementById("sendBtn");
+const themeToggle=document.getElementById("themeToggle");
+const loadingOverlay=document.getElementById("loadingOverlay");
+const imageBtn=document.getElementById("imageBtn");
+const imageInput=document.getElementById("imageInput");
+
+let selectedImage=null;
+
+imageBtn.addEventListener("click",()=>imageInput.click());
+imageInput.addEventListener("change",()=>{
+  if(imageInput.files.length>0){
+    selectedImage=imageInput.files[0];
+    appendMessage("📷 تصویر انتخاب شد و آماده ارسال است",true);
+  }
+});
+
+function appendMessage(text,isUser=false){
+  if(!text)return;
+  const msg=document.createElement("div");
+  msg.className="message "+(isUser?"user-message":"bot-message");
+  msg.textContent=text;
+  chatMessages.appendChild(msg);
+  chatMessages.scrollTop=chatMessages.scrollHeight;
+}
+
+async function sendMessage(){
+  const text=userInput.value.trim();
+  if(!text&&!selectedImage){
+    alert("لطفاً متن پیام یا تصویر را وارد کنید");
+    return;
+  }
+
+  let imageData=null;
+  if(selectedImage){
+    const arrayBuffer=await selectedImage.arrayBuffer();
+    const base64String=btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    imageData={filename:selectedImage.name,content:base64String};
+  }
+
+  if(text)appendMessage(text,true);
+
+  userInput.value="";
+  selectedImage=null;
+  imageInput.value="";
+
+  loadingOverlay.style.display="flex";
+  sendBtn.disabled=true;
+
+  try{
+    const res=await fetch("/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:text,image:imageData})
+    });
+    const data=await res.json();
+    appendMessage(data.reply,false);
+  }catch(err){
+    appendMessage("خطا در ارتباط با سرور: "+err.message,false);
+  }finally{
+    loadingOverlay.style.display="none";
+    sendBtn.disabled=false;
+  }
+}
+
+sendBtn.addEventListener("click",sendMessage);
+userInput.addEventListener("keydown",(e)=>{
+  if(e.key==="Enter"&&!e.shiftKey){
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+themeToggle.addEventListener("click",()=>{
+  const night=document.body.classList.toggle("night");
+  themeToggle.textContent=night?"☀️":"🌙";
+  const brandLogo=document.getElementById("brandLogo");
+  brandLogo.src=night
+    ?"https://i.ibb.co/Y7p4kwKW/night-logo.png"
+    :"https://i.ibb.co/j9gP71MH/day-logo.png";
+});
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
